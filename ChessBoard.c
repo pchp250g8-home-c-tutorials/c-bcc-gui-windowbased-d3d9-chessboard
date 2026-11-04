@@ -1,0 +1,312 @@
+#include <windows.h>
+#include <tchar.h>
+#include "ChessBoard.h"
+
+#define MAX_LOADSTRING 100
+
+// Global Variables:
+HINSTANCE hInst;                                // current instance
+TCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
+TCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+HWND m_hWnd;
+BOOL bActive;
+D3DPRESENT_PARAMETERS d3dpp;
+IDirect3D9* m_d3d9;
+IDirect3DDevice9* m_d3d_Device;
+
+// Forward declarations of functions included in this code module:
+ATOM                MyRegisterClass(HINSTANCE hInstance);
+BOOL                InitInstance(HINSTANCE, int);
+LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+//------------------------------------------------------------------------------------------------------
+BOOL InitializeDirect3D();
+void DestroyDirect3D();
+void RenderScene();
+//------------------------------------------------------------------------------------------------------
+
+int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow)
+{
+
+	MSG msg;
+    HACCEL hAccelTable = LoadAccelerators
+    (
+    	hInstance,
+        MAKEINTRESOURCE(IDC_CHESSBOARD)
+    );
+    // Initialize global strings
+    LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+    LoadString(hInstance, IDC_CHESSBOARD, szWindowClass, MAX_LOADSTRING);
+    MyRegisterClass(hInstance);
+    // Perform application initialization:
+    if (!InitInstance (hInstance, nCmdShow))
+    {
+        return FALSE;
+    }
+    // Main message loop:
+    while (GetMessage(&msg, NULL, 0, 0))
+    {
+        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+	return (int) msg.wParam;
+}
+
+//
+//  FUNCTION: MyRegisterClass()
+//
+//  PURPOSE: Registers the window class.
+//
+ATOM MyRegisterClass(HINSTANCE hInstance)
+{
+    WNDCLASSEXW wcex;
+
+    wcex.cbSize = sizeof(WNDCLASSEX);
+
+    wcex.style          = CS_HREDRAW | CS_VREDRAW;
+    wcex.lpfnWndProc    = WndProc;
+    wcex.cbClsExtra     = 0;
+    wcex.cbWndExtra     = 0;
+    wcex.hInstance      = hInstance;
+    wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_CHESSBOARD));
+    wcex.hCursor        = LoadCursor(NULL, IDC_ARROW);
+    wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+1);
+    wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_CHESSBOARD);
+    wcex.lpszClassName  = szWindowClass;
+    wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+    return RegisterClassExW(&wcex);
+}
+
+//
+//   FUNCTION: InitInstance(HINSTANCE, int)
+//
+//   PURPOSE: Saves instance handle and creates main window
+//
+//   COMMENTS:
+//
+//        In this function, we save the instance handle in a global variable and
+//        create and display the main program window.
+//
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+{
+   hInst = hInstance; // Store instance handle in our global variable
+
+   HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+      CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, NULL, NULL, hInstance, NULL);
+
+   if (!hWnd)
+   {
+      return FALSE;
+   }
+   m_hWnd = hWnd;
+   if (!InitializeDirect3D())
+   {
+       MessageBox
+       (
+       		NULL,
+            _T("Error Loading DirectX"),
+            _T("Error"),
+            MB_OK | MB_ICONERROR
+       );
+       return FALSE;
+   }
+   ShowWindow(hWnd, nCmdShow);
+   UpdateWindow(hWnd);
+
+   return TRUE;
+}
+
+//
+//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
+//
+//  PURPOSE: Processes messages for the main window.
+//
+//  WM_COMMAND  - process the application menu
+//  WM_PAINT    - Paint the main window
+//  WM_DESTROY  - post a quit message and return
+//
+//
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_COMMAND:
+        {
+            int wmId = LOWORD(wParam);
+            // Parse the menu selections:
+            switch (wmId)
+            {
+            case IDM_ABOUT:
+                DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+                break;
+            case IDM_EXIT:
+                DestroyWindow(hWnd);
+                break;
+            default:
+                return DefWindowProc(hWnd, message, wParam, lParam);
+            }
+        }
+        break;
+    case WM_ACTIVATE:
+        {
+            bActive = LOWORD(wParam);
+            break;
+        }
+    case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            BeginPaint(hWnd, &ps);
+            // TODO: Add any drawing code here...
+            RenderScene();
+            EndPaint(hWnd, &ps);
+        }
+        break;
+    case WM_SIZE:
+        {
+            RECT rcPaint;
+            int width = 0, height = 0;
+            if (m_d3d9 == NULL) return FALSE;
+            if (m_d3d_Device == NULL) return FALSE;
+            GetClientRect(hWnd, &rcPaint);
+            width = rcPaint.right - rcPaint.left;
+            height = rcPaint.bottom - rcPaint.top;
+            if (width > 0 && height > 0)
+            {
+                d3dpp.BackBufferWidth = width;
+                d3dpp.BackBufferHeight = height;
+                m_d3d_Device->lpVtbl->Reset(m_d3d_Device, &d3dpp);
+            }
+            InvalidateRect(hWnd, NULL, TRUE);
+            break;
+        }
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+    default:
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    }
+    return 0;
+}
+
+// Message handler for about box.
+INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message)
+    {
+    case WM_INITDIALOG:
+        return (INT_PTR)TRUE;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
+}
+//------------------------------------------------------------------------------------------------------
+BOOL InitializeDirect3D()
+{
+    D3DDISPLAYMODE d3ddm;
+    HRESULT hr;
+    RECT rcPaint;
+    int width, height;
+    ZeroMemory(&d3dpp, sizeof(d3dpp));
+    ZeroMemory(&d3ddm, sizeof(d3ddm));
+    ZeroMemory(&m_d3d9, sizeof(m_d3d9));
+    ZeroMemory(&m_d3d_Device, sizeof(m_d3d_Device));
+    m_d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    if (m_d3d9 == NULL) return FALSE;
+    hr = m_d3d9->lpVtbl->GetAdapterDisplayMode(m_d3d9, 0, &d3ddm);
+    if (FAILED(hr)) return FALSE;
+    GetClientRect(m_hWnd, &rcPaint);
+    width = rcPaint.right - rcPaint.left;
+    height = rcPaint.bottom - rcPaint.top;
+    d3dpp.Windowed = TRUE;
+    d3dpp.BackBufferFormat = d3ddm.Format;
+    d3dpp.BackBufferWidth = width;
+    d3dpp.BackBufferHeight = height;
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    hr = m_d3d9->lpVtbl->CreateDevice
+    (
+        m_d3d9,
+        0,
+        D3DDEVTYPE_HAL,
+        m_hWnd,
+        D3DCREATE_SOFTWARE_VERTEXPROCESSING,
+        &d3dpp,
+        &m_d3d_Device
+    );
+    if (FAILED(hr)) return FALSE;
+    return TRUE;
+}
+//------------------------------------------------------------------------------------------------------
+void DestroyDirect3D()
+{
+    if (m_d3d_Device != NULL)
+    {
+        m_d3d_Device->lpVtbl->Release(m_d3d_Device);
+        m_d3d_Device = NULL;
+    }
+
+    if (m_d3d9 != NULL)
+    {
+        m_d3d9->lpVtbl->Release(m_d3d9);
+        m_d3d9 = NULL;
+    }
+
+}
+//------------------------------------------------------------------------------------------------------
+void RenderScene()
+{
+    int k = 0;
+    int width, height;
+    RECT rect;
+    D3DRECT rects[32];
+    D3DCOLOR d3dColor1 = D3DCOLOR_XRGB(0, 255, 255);
+    D3DCOLOR d3dColor2 = D3DCOLOR_XRGB(165, 42, 42);
+    if (m_d3d9 == NULL) return;
+    if (m_d3d_Device == NULL) return;
+    GetClientRect(m_hWnd, &rect);
+    width = (rect.right - rect.left) / 8;
+    height = (rect.bottom - rect.top) / 8;
+    m_d3d_Device->lpVtbl->Clear
+    (
+        m_d3d_Device,
+        0, NULL,
+        D3DCLEAR_TARGET,
+        d3dColor1,
+        0, 0
+    );
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = i % 2; j < 8; j += 2)
+        {
+            int left = i * width;
+            int top = j * height;
+            int right = left + width;
+            int bottom = top + height;
+            rects[k].x1 = left; rects[k].y1 = top;
+            rects[k].x2 = right; rects[k].y2 = bottom;
+            k++;
+        }
+    }
+    m_d3d_Device->lpVtbl->Clear
+    (
+        m_d3d_Device,
+        32, rects,
+        D3DCLEAR_TARGET,
+        d3dColor2,
+        0, 0
+    );
+    m_d3d_Device->lpVtbl->BeginScene(m_d3d_Device);
+    m_d3d_Device->lpVtbl->EndScene(m_d3d_Device);
+    m_d3d_Device->lpVtbl->Present(m_d3d_Device, NULL, NULL, 0, NULL);
+}
